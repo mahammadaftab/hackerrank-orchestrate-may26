@@ -29,6 +29,22 @@ def get_index(data_dir: str) -> CorpusIndex:
     return CorpusIndex(docs)
 
 
+def _find_data_directories() -> list[str]:
+    root = Path(".").resolve()
+    options: list[str] = []
+    data_root = root / "data"
+    if data_root.exists() and data_root.is_dir():
+        options.append("data")
+        for child in sorted(data_root.iterdir()):
+            if child.is_dir():
+                options.append(str(Path("data") / child.name))
+    else:
+        for child in sorted(root.iterdir()):
+            if child.is_dir():
+                options.append(child.name)
+    return options
+
+
 def _normalize_company(company: str) -> str:
     c = (company or "").strip().lower()
     if c in {"hackerrank", "claude", "visa"}:
@@ -59,7 +75,16 @@ def _rows_to_csv(rows: List[Dict[str, str]]) -> bytes:
     out = io.StringIO()
     writer = csv.DictWriter(
         out,
-        fieldnames=["status", "product_area", "response", "justification", "request_type"],
+        fieldnames=[
+            "issue",
+            "subject",
+            "company",
+            "response",
+            "product_area",
+            "status",
+            "request_type",
+            "justification",
+        ],
     )
     writer.writeheader()
     for row in rows:
@@ -134,13 +159,44 @@ def render_batch(index: CorpusIndex) -> None:
     progress = st.progress(0.0, text="Running triage...")
     total = len(tickets)
     for i, ticket in enumerate(tickets, start=1):
-        decisions.append(asdict(triage_ticket(ticket, index)))
+        decision = triage_ticket(ticket, index)
+        decisions.append(
+            {
+                "issue": ticket.issue,
+                "subject": ticket.subject,
+                "company": ticket.company,
+                "response": decision.response,
+                "product_area": decision.product_area,
+                "status": decision.status,
+                "request_type": decision.request_type,
+                "justification": decision.justification,
+            }
+        )
         progress.progress(i / total, text=f"Processed {i}/{total} tickets")
 
     st.success(f"Completed triage for {total} tickets.")
-    st.dataframe(decisions, use_container_width=True, hide_index=True)
+    st.markdown("### Output Preview")
+    st.markdown("<span style='font-weight:600; font-size:16px;'>Downloaded CSV columns:</span>", unsafe_allow_html=True)
+    st.write(
+        "The downloaded file includes the full input columns plus the triage output columns in the order shown below. CSV files are plain text, so styling is applied in the app preview only."
+    )
+    preview_df = [
+        {
+            "Issue": row["issue"],
+            "Subject": row["subject"],
+            "Company": row["company"],
+            "Response": row["response"],
+            "Product Area": row["product_area"],
+            "Status": row["status"],
+            "Request Type": row["request_type"],
+            "Justification": row["justification"],
+        }
+        for row in decisions
+    ]
+    st.dataframe(preview_df, use_container_width=True, hide_index=True)
 
     output_bytes = _rows_to_csv(decisions)
+    st.markdown("### Download CSV")
     st.download_button(
         "Download output.csv",
         output_bytes,
@@ -167,8 +223,17 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Configuration")
-        data_dir = st.text_input("Data directory", value="data")
-        st.info("Tip: Keep data directory as repository `data/` folder.")
+        data_dir_options = _find_data_directories()
+        if data_dir_options:
+            data_dir = st.selectbox(
+                "Data directory",
+                options=data_dir_options,
+                index=0,
+                help="Choose a local corpus folder to load from the repository.",
+            )
+        else:
+            data_dir = st.text_input("Data directory", value="data")
+        st.info("Tip: Choose one of the available corpus folders under the repository.")
 
     try:
         index = get_index(data_dir)

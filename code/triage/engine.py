@@ -223,17 +223,29 @@ def run_batch(input_csv: str, output_csv: str, index: CorpusIndex) -> None:
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["status", "product_area", "response", "justification", "request_type"],
+            fieldnames=[
+                "issue",
+                "subject",
+                "company",
+                "response",
+                "product_area",
+                "status",
+                "request_type",
+                "justification",
+            ],
         )
         writer.writeheader()
         for ticket in tickets:
             decision = triage_ticket(ticket, index)
             writer.writerow(
                 {
-                    "status": decision.status,
-                    "product_area": decision.product_area,
+                    "issue": ticket.issue,
+                    "subject": ticket.subject,
+                    "company": ticket.company,
                     "response": decision.response,
-                    "justification": decision.justification,
+                    "product_area": decision.product_area,
+                    "status": decision.status,
                     "request_type": decision.request_type,
+                    "justification": decision.justification,
                 }
             )
